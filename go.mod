@@ -1,3 +1,3 @@
-module github.com/Fral738/deployer
+module github.com/PoteeDev/deployer
 
 go 1.18
