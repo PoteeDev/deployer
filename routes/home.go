@@ -1,76 +1,99 @@
 package routes
 
 import (
+	"encoding/json"
+	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
-	"encoding/json"
+
 	"github.com/gorilla/mux"
+	"github.com/gorilla/schema"
 )
 
+var decoder = schema.NewDecoder()
+
 type OpenstackConfig struct {
-	Username 	string
-	Password 	string
-	ProjectId 	string
-	AuthUrl		string
+	Username  string
+	Password  string
+	ProjectId string
+	AuthUrl   string
 }
 
 type YandexCloudConfig struct {
-	YC_TOKEN			string
-	YC_CLOUD_ID 		string
-	YC_FOLDER_ID		string
+	Token  string
+	Cloud  string
+	Folder string
+}
+
+func WriteJson(data interface{}, filename string) {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	err = os.WriteFile(filename, bytes, 0644)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 }
 
 func Home(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	http.ServeFile(w, r, "./templates/index.html")
-	radio := r.Form.Get("cloudType")
-	if radio == "openstack" {
-		username := r.FormValue("Username")
-		password := r.FormValue("Password")
-		projectId := r.FormValue("ProjectId")
-		authUrl := r.FormValue("AuthUrl")
+	if r.Method == http.MethodPost {
+		// extract radio button option ftom form
+		r.ParseForm()
+		radio := r.Form.Get("cloudType")
 
-		data := &OpenstackConfig{username, password, projectId, authUrl}
+		decoder.IgnoreUnknownKeys(true)
 
-		b, err := json.Marshal(data)
-		if err != nil {
-			log.Fatal(err)
-			return
+		// decode credentials and save to file
+		switch radio {
+		case "openstack":
+			var config OpenstackConfig
+			err := decoder.Decode(&config, r.PostForm)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			WriteJson(config, "openstack_config.json")
+		case "yc":
+			var config YandexCloudConfig
+			err := decoder.Decode(&config, r.PostForm)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			WriteJson(config, "yandex_cloud_config.json")
 		}
-
-		err = os.WriteFile("openstack_config.json", b, 0644)
-    	if err != nil {
-    	    log.Fatal(err)
-    	    return
-    	}
-	
-	} else if radio == "yc"{
-		token := r.FormValue("Token")
-		cloud := r.FormValue("Cloud")
-		folder := r.FormValue("Folder")
-
-		data := &YandexCloudConfig{token, cloud, folder}
-
-		b, err := json.Marshal(data)
-		if err != nil {
-			log.Fatal(err)
-			return
-		}
-		
-		d := json.Unmarshal(b)
-		log.Println(d)
-
-		err = os.WriteFile("yandex_cloud_config.json", b, 0644)
-    	if err != nil {
-			log.Fatal(err)
-        	return
-    	}
 	}
+	http.ServeFile(w, r, "./templates/index.html")
+}
+
+var broker = NewBroker()
+
+func ExampleRun(w http.ResponseWriter, r *http.Request) {
+	go broker.ExecuteScript("bash", "stream.sh")
+	fmt.Fprintf(w, "ok")
+
+}
+
+func ExampleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		r.ParseForm()
+		log.Println(r.Form)
+		log.Println(r.Form.Get(""))
+	}
+	t, _ := template.ParseFiles("templates/main.html", "templates/serve.html")
+	t.Execute(w, nil)
 }
 
 func Routes() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", Home)
+	r.HandleFunc("/logs", ExampleLogs).Methods("GET")
+	r.HandleFunc("/run", ExampleRun).Methods("POST")
+	r.HandleFunc("/stream", broker.Stream).Methods("GET")
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
