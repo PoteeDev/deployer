@@ -40,7 +40,16 @@ func WriteJson(data interface{}, filename string) {
 	}
 }
 
+type MainPageData struct {
+	Progress        int
+	Step            string
+	StepDescription string
+}
+
+var mainData = MainPageData{Progress: 5, StepDescription: "Choose Cloud provider"}
+
 func Home(w http.ResponseWriter, r *http.Request) {
+
 	if r.Method == http.MethodPost {
 		// extract radio button option ftom form
 		r.ParseForm()
@@ -67,8 +76,11 @@ func Home(w http.ResponseWriter, r *http.Request) {
 			}
 			WriteJson(config, "yandex_cloud_config.json")
 		}
+		mainData.Progress = 25
+		mainData.StepDescription = "Choose Deploy options"
 	}
-	http.ServeFile(w, r, "./templates/index.html")
+	t, _ := template.ParseFiles("templates/index.html")
+	t.Execute(w, mainData)
 }
 
 var broker = NewBroker()
